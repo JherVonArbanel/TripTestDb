@@ -1,0 +1,2 @@
+CREATE USER [developer] WITHOUT LOGIN
+GO

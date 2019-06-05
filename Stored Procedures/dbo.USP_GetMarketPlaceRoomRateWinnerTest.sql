@@ -1,0 +1,510 @@
+SET QUOTED_IDENTIFIER OFF
+GO
+SET ANSI_NULLS ON
+GO
+-- =============================================  
+-- Author:  Manoj Naik  
+-- Create date: 12th january 2015
+-- Description: This SP derives the winner GDS for Hotel room rate call and gets all the data for that GDS   - Testing
+-- =============================================  
+--EXEC USP_GetMarketPlaceRoomRateWinner 'AB448DFF-CAF7-43C5-80B5-EAF389A644FB'  
+CREATE PROCEDURE [dbo].[USP_GetMarketPlaceRoomRateWinnerTest]  
+   
+ @hotelResponsekey UNIQUEIDENTIFIER  
+ ,@isNightlyRobotCall BIT = 0  
+   
+AS  
+BEGIN  
+ SET NOCOUNT ON;  
+   
+ --Declare temporary table for hotelResponseDetailData  
+ CREATE TABLE #TmpHotelResponseDetail  
+ (  
+  [hotelResponseDetailKey] [uniqueidentifier] NOT NULL,  
+  [hotelResponseKey] [uniqueidentifier] NOT NULL,  
+  [hotelDailyPrice] [float] NOT NULL,  
+  [numberOfNights] [int] NULL,  
+  [supplierId] [varchar](20) NOT NULL,    
+  [hotelTotalPrice] [float] NULL,    
+  [hotelTaxRate] [float] NULL,  
+  [touricoNetRate] [float] NULL,  
+  [displayPrice] [float] NULL,  
+  [touricoCalculatedBar] [float] NULL  
+ )  
+   
+ --Declare variable table for storing marketplace GDS values  
+ DECLARE @VtblMarketPlaceVariablesGDS AS TABLE  
+ (  
+  [MarketPlaceVariablesId] [int] NOT NULL,  
+  [GDSId] [int] NOT NULL,  
+  [IsFeedOn] [bit] NULL,  
+  [IsNetRateFeed] [bit] NULL,  
+  [BARMarkupPer] [float] NULL,  
+  [BARMarkup] [float] NULL,  
+  [CrowdFloorMarkupPer] [float] NULL  
+ )  
+   
+ --Variable Declaration  
+ DECLARE @gdsResponseCount INT = 0  
+   ,@sabrePrice FLOAT = 0  
+   ,@touricoPrice FLOAT = 0  
+   ,@hotelsComPrice FLOAT = 0  
+   ,@operatingCostPercent FLOAT  
+   ,@operatingCostValue FLOAT  
+   ,@marketPlaceVariableId INT  
+   ,@sabreCommissionPercent INT  
+   ,@hotelsComCommissionPercent FLOAT  
+   ,@eanCommission FLOAT = 0  
+   ,@touricoCommission FLOAT = 0  
+   ,@sabreCommission FLOAT = 0  
+   ,@hotelResponseDetailKeyTourico UNIQUEIDENTIFIER  
+   ,@hotelResponseDetailKeyEan UNIQUEIDENTIFIER  
+   ,@hotelResponseDetailKeySabre UNIQUEIDENTIFIER  
+   ,@touricoNet FLOAT = 0  
+   ,@winner VARCHAR(20)     
+   ,@touricoActualMarkupPercent FLOAT  
+   ,@displayPrice FLOAT = 0  
+   ,@touricoBarCalculatedFromRoomRate FLOAT = 0  
+   ,@touricoMarkupPercent FLOAT  
+   ,@IsWinner BIT = 0  
+   ,@isOperatingCostPercentHigher BIT = 0
+   ,@barRateWinner FLOAT = 0  
+   
+ --Insert selected data from HotelResponseDetail based on hotelResponseKey  
+ INSERT INTO #TmpHotelResponseDetail  
+ (  
+  hotelResponseDetailKey  
+  ,hotelResponseKey  
+  ,hotelDailyPrice  
+  ,numberOfNights  
+  ,supplierId   
+  ,hotelTotalPrice  
+  ,hotelTaxRate  
+  ,touricoNetRate  
+  ,displayPrice  
+  ,touricoCalculatedBar  
+ )  
+ SELECT   
+  hotelResponseDetailKey  
+  ,hotelResponseKey  
+  ,originalHotelDailyPrice  
+  ,numberOfNights  
+  ,supplierId   
+  ,hotelTotalPrice  
+  ,hotelTaxRate  
+  ,touricoNetRate  
+  ,displayPrice  
+  ,touricoCalculationBarRate  
+ FROM HotelResponseDetail  
+ WHERE hotelResponseKey = @hotelResponsekey  
+ AND (rateDescription NOT LIKE ('%A A A%')   
+ AND rateDescription NOT LIKE ('%AAA%')   
+ AND rateDescription NOT LIKE ('%SENIOR%')   
+ AND rateDescription NOT LIKE ('%GOV%'))   
+   
+ --Set common marketplace values  
+ SELECT  
+ @operatingCostPercent = ISNULL(OperatingCostPer, 0)  
+ ,@operatingCostValue = ISNULL(OperatingCost, 0)  
+ ,@marketPlaceVariableId = Id  
+ FROM vault.dbo.MarketPlaceVariables  
+ WHERE IsActive = 1  
+   
+ --Insert individual GDS values  
+ INSERT INTO @VtblMarketPlaceVariablesGDS  
+ (  
+  [MarketPlaceVariablesId]  
+  ,[GDSId]   
+  ,[IsFeedOn]  
+  ,[IsNetRateFeed]  
+  ,[BARMarkupPer]  
+  ,[BARMarkup]   
+  ,[CrowdFloorMarkupPer]   
+ )  
+ SELECT  
+  [MarketPlaceVariablesId]  
+  ,[GDSId]   
+  ,[IsFeedOn]  
+  ,[IsNetRateFeed]  
+  ,[BARMarkupPer]  
+  ,[BARMarkup]   
+  ,[CrowdFloorMarkupPer]   
+ FROM vault.dbo.MarketPlaceVariablesGDS WITH (NOLOCK)  
+ WHERE MarketPlaceVariablesId = @marketPlaceVariableId  
+   
+ --EAN marketplace values  
+ SELECT   
+ @hotelsComCommissionPercent = ISNULL(BARMarkupPer, 0)  
+ FROM @VtblMarketPlaceVariablesGDS  
+ WHERE GDSId = 1   
+   
+ --SABRE marketplace values  
+ SELECT   
+ @sabreCommissionPercent = ISNULL(BARMarkupPer, 0)  
+ FROM @VtblMarketPlaceVariablesGDS  
+ WHERE GDSId = 4   
+   
+ --TOURICO marketplace values  
+ SELECT   
+ @touricoMarkupPercent = ISNULL(BARMarkupPer, 0)  
+ FROM @VtblMarketPlaceVariablesGDS  
+ WHERE GDSId = 5   
+   
+ --Get the lowest price for HotelsCom  
+ SELECT TOP 1  
+  @hotelsComPrice = ISNULL(hotelDailyPrice,0)  
+  ,@hotelResponseDetailKeyEan = hotelResponseDetailKey     
+  FROM #TmpHotelResponseDetail  
+  WHERE supplierId = 'HotelsCom'  
+  AND hotelResponseKey = @hotelResponsekey  
+  ORDER BY hotelDailyPrice ASC  
+   
+ --Get the lowest price for Tourico  
+ SELECT TOP 1  
+  @touricoPrice = ISNULL(touricoCalculatedBar,0)  
+  ,@hotelResponseDetailKeyTourico = hotelResponseDetailKey  
+  ,@touricoNet = ISNULL(touricoNetRate, 0)  
+  ,@displayPrice = ISNULL(displayPrice, 0)  
+  FROM #TmpHotelResponseDetail  
+  WHERE supplierId = 'Tourico'  
+  AND hotelResponseKey = @hotelResponsekey  
+  ORDER BY hotelDailyPrice ASC  
+   
+ --Get the lowest price for Sabre  
+ SELECT TOP 1  
+  @sabrePrice = ISNULL(hotelDailyPrice,0)  
+  ,@hotelResponseDetailKeySabre = hotelResponseDetailKey    
+  FROM #TmpHotelResponseDetail  
+  WHERE supplierId = 'Sabre'  
+  AND hotelResponseKey = @hotelResponsekey  
+  ORDER BY hotelDailyPrice ASC   
+   
+ --If we get results for all 3 GDS  
+ IF(@sabrePrice > 0 AND @touricoPrice > 0 AND @hotelsComPrice > 0)  
+ BEGIN   
+  --If Sabre price is higher than HotelsCom price then ignore Sabre  
+  IF(@sabrePrice > @hotelsComPrice)  
+  BEGIN  
+     
+   SET @eanCommission = dbo.udf_GetMarketPlaceCommission(@hotelsComPrice, @hotelsComCommissionPercent)  
+   SET @touricoCommission = dbo.udf_GetTouricoCommission(@hotelsComPrice, @operatingCostPercent, @operatingCostValue, @touricoNet)  
+     
+   --When HotelsCom commission is higher  
+   IF(@eanCommission > @touricoCommission)  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Hotelscom'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+   END  
+   --When Tourico commission is higher  
+   ELSE     
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Tourico'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+     ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+     ,@gdsPrice = @hotelsComPrice  
+     ,@touricoNet = @touricoNet  
+   END   
+     
+  END  
+  --END: If Sabre price is higher than HotelsCom price then ignore Sabre  
+  --If Sabre price is LESS than HotelsCom price then ignore HotelsCom  
+  ELSE IF(@hotelsComPrice > @sabrePrice)  
+  BEGIN  
+   SET @sabreCommission = dbo.udf_GetMarketPlaceCommission(@sabrePrice, @sabreCommissionPercent)  
+   SET @touricoCommission = dbo.udf_GetTouricoCommission(@sabrePrice, @operatingCostPercent, @operatingCostValue, @touricoNet)  
+     
+   --When Sabre commission is higher  
+   IF(@sabreCommission > @touricoCommission)  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Sabre'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+   END  
+   --When Tourico commission is higher  
+   ELSE  
+   BEGIN      
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Tourico'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+     ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+     ,@gdsPrice = @hotelsComPrice  
+     ,@touricoNet = @touricoNet       
+   END     
+  END  
+  --END: If Sabre price is LESS than HotelsCom price then ignore HotelsCom  
+  --If Sabre price and HotelsCom price are same  
+  ELSE IF(@sabrePrice = @hotelsComPrice)  
+  BEGIN  
+   --Calculate commission for all 3 GDS. In case of Tourico Commission use hotels com minimum bar rate  
+   SET @sabreCommission = dbo.udf_GetMarketPlaceCommission(@sabrePrice, @sabreCommissionPercent)  
+   SET @eanCommission = dbo.udf_GetMarketPlaceCommission(@hotelsComPrice, @hotelsComCommissionPercent)  
+   SET @touricoCommission = dbo.udf_GetTouricoCommission(@hotelsComPrice, @operatingCostPercent, @operatingCostValue, @touricoNet)  
+     
+   SET @winner =    
+   CASE WHEN @sabreCommission > @eanCommission   
+     AND @sabreCommission > @touricoCommission   
+     THEN 'Sabre'  
+     WHEN @eanCommission > @sabreCommission  
+     AND @eanCommission > @touricoCommission  
+     THEN 'Hotelscom'  
+     WHEN @touricoCommission > @sabreCommission  
+     AND @touricoCommission > @eanCommission  
+     THEN 'Tourico'  
+     ELSE 'Hotelscom'  
+   END  
+     
+   --Winner other than Tourico  
+   IF(@winner <> 'Tourico')  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = @winner  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+   END  
+   --When tourico is the winner  
+   ELSE  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = @winner  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+     ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+     ,@gdsPrice = @hotelsComPrice  
+     ,@touricoNet = @touricoNet  
+   END  
+        
+  END  
+  --END: If Sabre price and HotelsCom price are same  
+    
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+    
+    END  
+    --END: If we get results for all 3 GDS  
+    --If EAN and Sabre Price is available AND Tourico price is not available  
+    ELSE IF(@sabrePrice > 0 AND @hotelsComPrice > 0 AND @touricoPrice = 0)  
+    BEGIN  
+  --In this case commission is not calculated but the winner is decided using the lowest bar rate  
+  IF(@hotelsComPrice < @sabrePrice)  
+  BEGIN  
+   EXEC USP_GetMarketplaceWinnerData   
+    @winner = 'Hotelscom'  
+    ,@hotelResponsekey = @hotelResponsekey  
+    ,@isNightlyRobotCall = @isNightlyRobotCall  
+  END  
+  ELSE  
+  BEGIN  
+   EXEC USP_GetMarketplaceWinnerData   
+    @winner = 'Sabre'  
+    ,@hotelResponsekey = @hotelResponsekey  
+    ,@isNightlyRobotCall = @isNightlyRobotCall  
+  END  
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+    END  
+    --END: If EAN and Sabre Price is available AND Tourico price is not available  
+    --If Sabre and Tourico is availble but EAN is not available  
+    ELSE IF(@sabrePrice > 0 AND @touricoPrice > 0 AND @hotelsComPrice = 0)  
+    BEGIN  
+  IF(@sabrePrice < @touricoPrice)  
+  BEGIN       
+   --Calculate the commision for both. Use Sabre bar to calculate Tourico commission  
+   SET @sabreCommission = dbo.udf_GetMarketPlaceCommission(@sabrePrice, @sabreCommissionPercent)  
+   SET @touricoCommission = dbo.udf_GetTouricoCommission(@sabrePrice, @operatingCostPercent, @operatingCostValue, @touricoNet)  
+     
+   IF(@sabreCommission > @touricoCommission)  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Sabre'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+   END  
+   ELSE  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+     @winner = 'Tourico'  
+     ,@hotelResponsekey = @hotelResponsekey  
+     ,@isNightlyRobotCall = @isNightlyRobotCall  
+     ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+     ,@gdsPrice = @hotelsComPrice  
+     ,@touricoNet = @touricoNet      
+   END  
+     
+   Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+  END  
+  ELSE  
+  --If Tourico Price is less than Sabre Price  
+  BEGIN  
+  --Calculate Tourico bar based on Tourico Net and Tourico Markup percent  
+  SET @touricoBarCalculatedFromRoomRate = dbo.udf_GetTouricoBar  
+            (  
+             @touricoMarkupPercent  
+             ,@touricoNet               
+            )  
+  EXEC USP_GetMarketplaceWinnerData   
+   @winner = 'Tourico'  
+   ,@hotelResponsekey = @hotelResponsekey  
+   ,@isNightlyRobotCall = @isNightlyRobotCall  
+   ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+   ,@gdsPrice = @touricoBarCalculatedFromRoomRate  
+   ,@touricoNet = @touricoNet  
+   ,@touricoCalculatedBar = @touricoPrice  
+    
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected   
+  END  
+  --END: If Tourico Price is less than Sabre Price  
+    END  
+    --END: If Sabre and Tourico is availble but EAN is not available  
+    --If EAN and Tourico is availble but Sabre is not available  
+    ELSE IF(@hotelsComPrice > 0 AND @touricoPrice > 0 AND @sabrePrice = 0)  
+    BEGIN  
+  IF(@hotelsComPrice < @touricoPrice)  
+  BEGIN  
+   --Calculate the commision for both. Use Hotels Com bar to calculate Tourico commission   
+   SET @eanCommission = dbo.udf_GetMarketPlaceCommission(@hotelsComPrice, @hotelsComCommissionPercent)  
+   SET @touricoCommission = dbo.udf_GetTouricoCommission(@hotelsComPrice, @operatingCostPercent, @operatingCostValue, @touricoNet)  
+     
+   IF(@eanCommission > @touricoCommission)  
+   BEGIN  
+    EXEC USP_GetMarketplaceWinnerData   
+      @winner = 'Hotelscom'  
+      ,@hotelResponsekey = @hotelResponsekey  
+      ,@isNightlyRobotCall = @isNightlyRobotCall 
+      print 'HotelsCom' 
+   END  
+   ELSE  
+   BEGIN   
+    EXEC USP_GetMarketplaceWinnerData   
+      @winner = 'Tourico'  
+      ,@hotelResponsekey = @hotelResponsekey  
+      ,@isNightlyRobotCall = @isNightlyRobotCall  
+      ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+      ,@gdsPrice = @hotelsComPrice  
+      ,@touricoNet = @touricoNet  
+      print 'Tourico'
+   END    
+   Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected   
+  END  
+  ELSE  
+  --If Tourico Price is less than Hotels com Price  
+  BEGIN    
+   /*IF MARKUP PERCENT IS LOW OR ZERO THEN SET MARK UP PERCENT AS OPERATING PERCENT.  
+   THIS WILL ALLOW TO ATLEAST TO RECOVER THE OPERATING COST*/  
+   IF(ISNULL(@operatingCostPercent, 0) > ISNULL(@touricoMarkupPercent, 0))  
+   BEGIN  
+    SET @touricoMarkupPercent = @operatingCostPercent  
+    SET @isOperatingCostPercentHigher = 1  
+   END  
+       
+   --Calculate Tourico bar based on Tourico Net and Tourico Markup percent  
+   SET @touricoBarCalculatedFromRoomRate = dbo.udf_GetTouricoBar  
+             (  
+              @touricoMarkupPercent  
+              ,@touricoNet                
+             )  
+     
+   IF(@isOperatingCostPercentHigher = 1)  
+   BEGIN  
+    SET @touricoBarCalculatedFromRoomRate = @touricoBarCalculatedFromRoomRate + @operatingCostValue  
+   END 
+   --If tourico bar rate is higher, then we have to atleast recover the operating cost of tourico 
+   IF(@touricoBarCalculatedFromRoomRate > @hotelsComPrice)
+   BEGIN
+	SET @barRateWinner = @touricoBarCalculatedFromRoomRate 
+   END
+   ELSE
+   BEGIN
+	SET @barRateWinner = @hotelsComPrice
+   END
+    
+   EXEC USP_GetMarketplaceWinnerData   
+    @winner = 'Tourico'  
+    ,@hotelResponsekey = @hotelResponsekey  
+    ,@isNightlyRobotCall = @isNightlyRobotCall  
+    ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+    ,@gdsPrice = @barRateWinner  
+    ,@touricoNet = @touricoNet  
+    --,@touricoCalculatedBar = @touricoPrice  
+     
+   Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected   
+  END  
+  --END: If Tourico Price is less than Hotels com Price  
+    
+    END  
+    --END: If EAN and Tourico is availble but Sabre is not available  
+    --If only TOURICO is available  
+    ELSE IF(@touricoPrice > 0 AND @sabrePrice = 0 AND @hotelsComPrice = 0)  
+    BEGIN  
+  /*IF MARKUP PERCENT IS LOW OR ZERO THEN SET MARK UP PERCENT AS OPERATING PERCENT.  
+  THIS WILL ALLOW TO ATLEAST TO RECOVER THE OPERATING COST*/  
+  IF(ISNULL(@operatingCostPercent, 0) > ISNULL(@touricoMarkupPercent, 0))  
+  BEGIN  
+   SET @touricoMarkupPercent = @operatingCostPercent  
+   SET @isOperatingCostPercentHigher = 1  
+  END  
+    
+  --Calculate Tourico bar based on Tourico Net and Tourico Markup percent  
+  SET @touricoBarCalculatedFromRoomRate = dbo.udf_GetTouricoBar  
+            (  
+             @touricoMarkupPercent  
+             ,@touricoNet               
+            )  
+    
+  IF(@isOperatingCostPercentHigher = 1)  
+  BEGIN  
+   SET @touricoBarCalculatedFromRoomRate = @touricoBarCalculatedFromRoomRate + @operatingCostValue  
+  END  
+    
+  EXEC USP_GetMarketplaceWinnerData   
+   @winner = 'Tourico'  
+   ,@hotelResponsekey = @hotelResponsekey  
+   ,@isNightlyRobotCall = @isNightlyRobotCall  
+   ,@hotelResponseDetailKey = @hotelResponseDetailKeyTourico  
+   ,@gdsPrice = @touricoBarCalculatedFromRoomRate  
+   ,@touricoNet = @touricoNet  
+   ,@touricoCalculatedBar = @touricoPrice  
+    
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+    END  
+    --END: If only TOURICO is available  
+    --If only SABRE is available  
+    ELSE IF(@sabrePrice > 0 AND @touricoPrice = 0 AND @hotelsComPrice = 0)  
+    BEGIN  
+  EXEC USP_GetMarketplaceWinnerData   
+   @winner = 'Sabre'  
+   ,@hotelResponsekey = @hotelResponsekey  
+   ,@isNightlyRobotCall = @isNightlyRobotCall  
+    
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+    END  
+    --END: If only SABRE is available  
+    --If only HOTELSCOM is available  
+    ELSE IF(@hotelsComPrice > 0 AND @sabrePrice = 0 AND @touricoPrice = 0)  
+    BEGIN  
+  EXEC USP_GetMarketplaceWinnerData   
+   @winner = 'Hotelscom'  
+   ,@hotelResponsekey = @hotelResponsekey  
+   ,@isNightlyRobotCall = @isNightlyRobotCall  
+    
+  Set @IsWinner = 1 -- This will be used to get calculated values only if any winner has been selected  
+    END  
+    --END: If only HOTELSCOM is available  
+      
+   -- --Get marketplace calculated values to show on hoteldetails page  
+   IF(@isNightlyRobotCall = 0)  
+   BEGIN  
+    IF(@IsWinner =1)  
+    BEGIN  
+  SELECT isnull(@hotelsComPrice ,0) as  EANBar,isnull(@touricoNet ,0) as  TouricoNet,isnull(@sabrePrice ,0) as  SabreBar  
+    ,isnull(@touricoPrice ,0) as  TouricoCalculatedBar,isnull(@eanCommission ,0) as  EANCommission  
+    ,isnull(@touricoCommission ,0) as  TouricoCommission,isnull(@sabreCommission ,0) as  SabreCommission,isnull(@touricoActualMarkupPercent ,0) as  TouricoActualMarkupPercent  
+  END  
+ END     
+END  
+  
+DROP TABLE #TmpHotelResponseDetail
+GO

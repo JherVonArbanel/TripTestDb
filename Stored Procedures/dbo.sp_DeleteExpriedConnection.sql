@@ -1,0 +1,12 @@
+SET QUOTED_IDENTIFIER ON
+GO
+SET ANSI_NULLS ON
+GO
+CREATE PROCEDURE [dbo].[sp_DeleteExpriedConnection]
+AS 
+BEGIN
+
+	DELETE FROM SabreSession WHERE DATEDIFF( mi, LastAccessDate, GETDATE()) > 14 
+
+END
+GO

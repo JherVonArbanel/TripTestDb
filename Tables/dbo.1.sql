@@ -1,0 +1,30 @@
+CREATE TABLE [dbo].[1]
+(
+[AuditKey] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[TripRequestkey] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[CreateDate] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[SLACategory] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[SLASubCategory] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Page] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[APIName] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[StartDate] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[EndDate] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Connector] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[ResponseTime] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 11] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 12] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 13] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 14] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 15] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 16] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 17] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 18] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 19] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 20] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 21] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 22] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 23] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 24] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL,
+[Column 25] [varchar] (50) COLLATE SQL_Latin1_General_CP1_CI_AS NULL
+) ON [PRIMARY]
+GO

@@ -1,0 +1,12 @@
+SET QUOTED_IDENTIFIER OFF
+GO
+SET ANSI_NULLS ON
+GO
+CREATE PROCEDURE [dbo].[usp_GetCachingTmu]
+
+	@userKey INT
+AS    
+BEGIN    	
+    SELECT * FROM CachingTMU 
+END
+GO

@@ -1,0 +1,16 @@
+SET QUOTED_IDENTIFIER ON
+GO
+SET ANSI_NULLS ON
+GO
+CREATE PROCEDURE [dbo].[spDeleteSabreSession] 
+(
+	@SessionID INT
+)
+AS
+
+	SET NOCOUNT ON
+
+	DELETE FROM [SabreSession]
+	WHERE [SessionID] = @SessionID
+
+GO

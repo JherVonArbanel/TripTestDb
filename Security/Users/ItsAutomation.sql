@@ -1,0 +1,2 @@
+CREATE USER [ItsAutomation] WITHOUT LOGIN
+GO

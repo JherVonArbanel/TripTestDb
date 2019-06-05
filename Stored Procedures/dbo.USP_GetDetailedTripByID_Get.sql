@@ -1,0 +1,15 @@
+SET QUOTED_IDENTIFIER ON
+GO
+SET ANSI_NULLS ON
+GO
+CREATE PROCEDURE [dbo].[USP_GetDetailedTripByID_Get]
+(
+	@tripKey	INT
+)
+AS
+BEGIN
+
+	SELECT tripName FROM trip WHERE tripKey = @tripKey
+
+END
+GO
